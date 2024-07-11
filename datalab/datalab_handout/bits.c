@@ -131,9 +131,24 @@ NOTES:
  *   2. Use the BDD checker to formally verify that your solutions produce 
  *      the correct answers.
  */
+/
+  整数运算规则：
+  2进制补码表示整数，整数32bit表示，且范围0~255（0xFF）之间
+  算数右移最高位填充符号位
+  移位量0~31之间
+  可以使用的：& ^ | + << >> ! ~
 
+  浮点数运算规则：
+  可以使用循环和条件控制
+  可以使用int和unsigned
+  可以使用逻辑右移和算数右移
 
+  最大操作数限制，=不计算在内
+  dlc编译器检查代码合法性（满足限制条件）
+  btest测试代码正确性
+*/
 #endif
+
 //1
 /* 
  * bitXor - x^y using only ~ and & 
