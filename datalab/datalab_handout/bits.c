@@ -273,7 +273,6 @@ int logicalNeg(int x) {
 
   return result ^ 1;
 }
-
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
  *  Examples: howManyBits(12) = 5
@@ -286,11 +285,29 @@ int logicalNeg(int x) {
  *  Max ops: 90
  *  Rating: 4
  */
+ //负数转化为正数处理不需要+1，因为有符号补码表示时，正数的范围总是比负数-1
 int howManyBits(int x) {
-  return 0;
+
+  int x_sign = (x ^ (x >> 31)) ;  
+
+  int b16_ = !!(x_sign>>16)<<4;
+  int b08 = x_sign >> b16_;
+
+  int b08_ = !!(b08>>8)<<3;
+  int b04 = b08 >> b08_;
+
+  int b04_ = !!(b04 >> 4)<<2;
+  int b02 = b04 >> b04_;
+
+  int b02_ = !!(b02 >> 2)<<1;
+  int b01 = b02 >> b02_;
+
+  int b01_ = !!(b01 >> 1);
+  int b00 = b01 >> b01_;
+
+  int result = b16_ + b08_ + b04_ + b02_ + b01_ + b00 + 1;
+  return result;
 }
-
-
 
 //float
 /* 
@@ -305,7 +322,27 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+
+  unsigned int sign  = uf  & 0x80000000;
+  int exp = (uf >> 23) & 0xff;
+  unsigned int frac = uf & 0x7fffff;
+  int nan = !(exp ^ 0xff);
+  int result;
+
+  if(exp)
+    exp = (exp + 1) << 23;
+  else
+  {
+    exp = exp << 23;    //零值和此规格化值
+      if(frac)
+        frac = frac << 1;
+  }
+
+  result = sign | exp | frac;
+  if(nan)
+    result = uf;
+
+  return result;
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -320,7 +357,37 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+
+  int sign,exp,frac,frac_,result;
+  int flag1,flag2,flag3;
+
+  sign = uf & 0x80000000;
+  exp = (uf >> 23) & 0xff;
+  frac = uf & 0x7fffff;
+
+  flag1 = exp + (~127 + 1);   //exp-127为负数取零
+  flag2 = 157 + (~exp + 1) ;   //157-exp为负数则超范围
+  flag3 = flag1 + (~23 + 1) ;  //超出尾数范围23左移，小于则右移
+
+  if(flag1>>31)
+    return 0;
+  else
+    if(flag2>>31)
+      return 0x80000000u;
+    else
+    {
+      frac_ = (1 << 23) | frac;   //最高位添加隐含的1
+      if(flag3>>31)
+        frac_ = frac_ >> (~flag3 + 1);
+      else
+        frac_ = frac_ << flag3;
+    }
+
+  if(sign)
+    result = ~frac_ + 1 ;     //正数转化为负数（取反+1）
+  else
+    result = frac_;
+  return result;
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
@@ -336,5 +403,18 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+
+  int flag1,flag2,exp;
+
+  flag1 = x + 126;
+  flag2 = 127 + (~x + 1);   //
+
+  if(flag1>>31)
+    return 0;
+  if(flag2>>31)
+    return 0x7f800000;
+  
+  exp = x + 127;
+
+    return exp << 23;
 }
