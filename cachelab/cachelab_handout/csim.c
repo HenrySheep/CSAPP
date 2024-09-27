@@ -16,27 +16,25 @@ struct cache_line
 int cache_init(struct cache_line* caches, int S, int E);
 int cache_ls(struct cache_line* cache_set,char identifier,unsigned address,int size,unsigned tag,int E);
 
+/* 全局变量定义 */
 int hits = 0,misses = 0,evictions = 0;
 int flag = 0;
 int global_counter = 0;     /* 每次访问内存时counter++，并赋值给LRU_counter,类似时间戳 */
+
 int main(int argc, char *argv[] )
 {
     int opt;
-    int s,b;
-    int S,E,B;
+    int s,b,S,E,B;
     char *filename;
     FILE *trace_file; 
 
     char identifier;
-    unsigned int address;
-    unsigned tag, set,set_;
+    unsigned address,tag, set,set_;
     /* unsigned offset; */
     int size;
+
     /* 命令行参数读取 */
-
-
-    while((opt = getopt(argc, argv, "v::s:E:b:t:")) != -1)
-    {
+    while((opt = getopt(argc, argv, "v::s:E:b:t:")) != -1){
         switch(opt)
         {
             case 'v':
@@ -71,19 +69,15 @@ int main(int argc, char *argv[] )
     struct cache_line * caches = (struct cache_line*)malloc(S * E * sizeof(struct cache_line) ) ;
     cache_init(caches, S, E);
 
-
     /* trace文件读取解析 */
     trace_file = fopen(filename,"r"); 
-    while(fscanf(trace_file," %c %x,%d", &identifier, &address, &size)>0)
-    {
-
+    while(fscanf(trace_file," %c %x,%d", &identifier, &address, &size)>0){
         set_ = ~((~0)<<s);
         set = (address >> b) & set_;
         /* offset = address & 0xF; */
         tag = address >> (s + b);
         struct cache_line* cache_set = &caches[set * E];
-        switch(identifier)
-        {
+        switch(identifier){
             case 'L':
             cache_ls(cache_set,identifier,address,size,tag,E);
             break;
@@ -94,10 +88,8 @@ int main(int argc, char *argv[] )
 
             case 'M':
             cache_ls(cache_set,identifier,address,size,tag,E);
-            for(int i=0;i<E;i++)
-            {
-                if((cache_set[i].valid == 1)&&(cache_set[i].tag == tag))
-                {
+            for(int i=0;i<E;i++){
+                if((cache_set[i].valid == 1)&&(cache_set[i].tag == tag)){
                     hits++;
                     cache_set[i].LRU_counter++;
                     if(flag)
@@ -117,8 +109,7 @@ int main(int argc, char *argv[] )
 int cache_init(struct cache_line* caches, int S, int E)
 {
     int len = S*E;
-    for(int i = 0;i<len;i++)
-    {
+    for(int i = 0;i<len;i++){
         caches[i].valid = 0;
         caches[i].LRU_counter = 0;
     }
@@ -129,10 +120,8 @@ int cache_ls(struct cache_line* cache_set,char identifier,unsigned address,int s
 {
     global_counter++;
     int evict_index = 0;
-    for(int i=0;i<E;i++)
-    {
-        if((cache_set[i].valid == 1)&&(cache_set[i].tag == tag))
-        {
+    for(int i=0;i<E;i++){
+        if((cache_set[i].valid == 1)&&(cache_set[i].tag == tag)){
             hits++;
             cache_set[i].LRU_counter = global_counter;
             if(flag)
@@ -142,10 +131,8 @@ int cache_ls(struct cache_line* cache_set,char identifier,unsigned address,int s
             return 0;
         }
     }
-    for(int i=0;i<E;i++)
-    {
-        if(cache_set[i].valid == 0 )
-        {
+    for(int i=0;i<E;i++){
+        if(cache_set[i].valid == 0 ){
             misses++;
             cache_set[i].valid = 1;
             cache_set[i].tag = tag;
@@ -157,8 +144,7 @@ int cache_ls(struct cache_line* cache_set,char identifier,unsigned address,int s
             return 0;
         }
     }
-    for(int i=0;i<E-1;i++)
-    {
+    for(int i=0;i<E-1;i++){
         if(cache_set[evict_index].LRU_counter > cache_set[i+1].LRU_counter )
             evict_index = i+1;
     } 

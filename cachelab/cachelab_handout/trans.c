@@ -22,7 +22,27 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
+    int B_ = 8;
+    int temp,diag;
+    for(int ki=0;ki<M;ki+=B_){
+        for(int kj=0;kj<N;kj+=B_){
+            for(int i=0;i<B_;i++){
+                for(int j=0;j<B_;j++){
+                    if(i == j){
+                        diag = A[i+ki][kj +j];  /* 对角线元素保存 */
+
+                    }else{
+                        temp = A[i+ki][kj +j];
+                        B[kj +j][i+ki] = temp;
+                    }
+                }
+                B[i+kj][i+ki] = diag;
+            }
+        }
+    }
 }
+
+
 
 /* 
  * You can define additional transpose functions below. We've defined
@@ -42,7 +62,8 @@ void trans(int M, int N, int A[N][M], int B[M][N])
             tmp = A[i][j];
             B[j][i] = tmp;
         }
-    }    
+    } 
+
 
 }
 
@@ -82,3 +103,30 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N])
     return 1;
 }
 
+
+
+
+/*
+32 * 32
+void transpose_submit(int M, int N, int A[N][M], int B[M][N])
+{
+    int B_ = 8;
+    int temp,diag;
+    for(int ki=0;ki<M;ki+=B_){
+        for(int kj=0;kj<N;kj+=B_){
+            for(int i=0;i<B_;i++){
+                for(int j=0;j<B_;j++){
+                    if(i == j){
+                        diag = A[i+ki][kj +j];  对角线元素保存
+
+                    }else{
+                        temp = A[i+ki][kj +j];
+                        B[kj +j][i+ki] = temp;
+                    }
+                }
+                B[i+kj][i+ki] = diag;
+            }
+        }
+    }
+}
+*/
