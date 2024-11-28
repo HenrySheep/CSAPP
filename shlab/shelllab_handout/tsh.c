@@ -3,6 +3,7 @@
  * 
  * <Put your name and login ID here>
  */
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,7 +12,10 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <errno.h>
+
 
 /* Misc manifest constants */
 #define MAXLINE    1024   /* max line size */
@@ -95,7 +99,7 @@ int main(int argc, char **argv)
     int emit_prompt = 1; /* emit prompt (default) */
 
     /* Redirect stderr to stdout (so that driver will get all output
-     * on the pipe connected to stdout) */
+     * on the pipe connected to stdout) 标准错误直接重定向到标准输出*/
     dup2(1, 2);
 
     /* Parse the command line */
@@ -165,6 +169,24 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
+    int bg,buildin;
+    static char *argv[MAXARGS];
+
+    bg = parseline(cmdline, argv);
+    buildin = builtin_cmd(argv);
+    
+    if(!buildin){
+        
+        return;
+    }
+
+    if(fork() == 0){
+        if(bg == '&');
+        
+    }else{
+        
+    }
+
     return;
 }
 
@@ -192,7 +214,7 @@ int parseline(const char *cmdline, char **argv)
     argc = 0;
     if (*buf == '\'') {
 	buf++;
-	delim = strchr(buf, '\'');
+	delim = strchr(buf, '\'');   /* 分隔符为单引号或者空格 */
     }
     else {
 	delim = strchr(buf, ' ');
@@ -200,7 +222,7 @@ int parseline(const char *cmdline, char **argv)
 
     while (delim) {
 	argv[argc++] = buf;
-	*delim = '\0';
+	*delim = '\0';          /* 替代分隔符为字符串终止\0 使argv存储参数*/
 	buf = delim + 1;
 	while (*buf && (*buf == ' ')) /* ignore spaces */
 	       buf++;
@@ -213,14 +235,14 @@ int parseline(const char *cmdline, char **argv)
 	    delim = strchr(buf, ' ');
 	}
     }
-    argv[argc] = NULL;
+    argv[argc] = NULL;          /* 索引加一位置 置NULL */
     
     if (argc == 0)  /* ignore blank line */
 	return 1;
 
     /* should the job run in the background? */
-    if ((bg = (*argv[argc-1] == '&')) != 0) {
-	argv[--argc] = NULL;
+    if ((bg = (*argv[argc-1] == '&')) != 0) {       
+	argv[--argc] = NULL;            /* 如果最后一个参数是&则后台运行，并替换成NULL */
     }
     return bg;
 }
@@ -231,6 +253,15 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
+    char *builtin[] = {"quit","jobs","bg","fg"};
+
+    if(!strcmp(argv[0],builtin[0])){
+        exit(0);
+    }
+    if(!strcmp(argv[0],builtin[2])){
+        do_bgfg(argv);
+    }
+
     return 0;     /* not a builtin command */
 }
 
@@ -273,6 +304,7 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+    
     return;
 }
 
