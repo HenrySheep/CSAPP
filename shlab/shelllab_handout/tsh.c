@@ -89,6 +89,8 @@ void app_error(char *msg);
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
 
+pid_t Fork(void);
+
 /*
  * main - The shell's main routine 
  */
@@ -121,7 +123,7 @@ int main(int argc, char **argv)
 
     /* Install the signal handlers */
 
-    /* These are the ones you will need to implement */
+    /* These are the ones you will need to implement 绑定信号处理函数 */
     Signal(SIGINT,  sigint_handler);   /* ctrl-c */
     Signal(SIGTSTP, sigtstp_handler);  /* ctrl-z */
     Signal(SIGCHLD, sigchld_handler);  /* Terminated or stopped child */
@@ -169,25 +171,69 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
-    int bg,buildin;
-    static char *argv[MAXARGS];
+    pid_t pid;
+    int bg,builtin;
+    char buf[MAXLINE];
+    char *argv[MAXARGS];
 
+    sigset_t set,oldset;
+    sigemptyset(&set);
+    sigaddset(&set,SIGCHLD);
+
+
+
+    strncpy(buf,cmdline,MAXLINE);
     bg = parseline(cmdline, argv);
-    buildin = builtin_cmd(argv);
-    
-    if(!buildin){
-        
+
+    if(!argv[0]){
         return;
     }
 
-    if(fork() == 0){
-        if(bg == '&');
-        
-    }else{
-        
-    }
+    builtin = builtin_cmd(argv);
+    
+    if(!builtin){
+        /* 创建子进程之前阻塞sigchild */
+        sigaddset(&set,SIGCHLD);
+        sigprocmask(SIG_BLOCK,&set,&oldset);
+        if((pid = Fork()) == 0)
+        {   
+            
+            sigprocmask(SIG_SETMASK, &oldset, &set);
+            setpgid(0, 0);
+            if(execve(argv[0],argv,environ)<0){
+                
+                printf("%s: Command not found\n",argv[0]);
+                exit(0);
+            }
+        }
 
+        addjob(jobs, pid, (bg?BG:FG), cmdline);
+        sigprocmask(SIG_SETMASK, &oldset, NULL);    /* 此种场景使用SIG_UNBLOK等效（阻塞前set未被阻塞） */
+        /* 是否是前台工作 */
+        if(!bg){
+
+            waitfg(pid);
+            /*
+            if(waitpid(pid,&status,0)<0){
+                unix_error("waitfg: waitpid error");
+            }
+            */
+        }else{
+            setpgid(0, 0);
+            printf("[%d] (%d) %s",pid2jid(pid), pid, cmdline);
+           
+        }
+
+    }
     return;
+}
+
+pid_t Fork(){
+    pid_t pid;
+    if((pid=fork())< 0){
+        unix_error("fork error");
+    }
+    return pid;
 }
 
 /* 
@@ -253,14 +299,20 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
-    char *builtin[] = {"quit","jobs","bg","fg"};
 
-    if(!strcmp(argv[0],builtin[0])){
+
+    if(!strcmp(argv[0],"quit")){
         exit(0);
     }
-    if(!strcmp(argv[0],builtin[2])){
-        do_bgfg(argv);
+    if(!strcmp(argv[0],"jobs")){
+        listjobs(jobs);
+        return 1;
     }
+    if(!strcmp(argv[0],"bg") || !strcmp(argv[0],"fg")){
+        do_bgfg(argv);
+        return 1;
+    }
+
 
     return 0;     /* not a builtin command */
 }
@@ -270,6 +322,58 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
+    pid_t pid;
+    int jid;
+    struct job_t *job_p;
+    char *id = argv[1];
+    
+    /* 参数格式检查 */
+
+    if(!id){
+        printf("%s command requires PID or %%jobid arguments\n", argv[0]);
+        return;
+    }
+
+    if( id[0]== '%'){
+
+
+        jid = atoi(id+1);
+        if(jid <=0 ){
+            printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+            return;
+        }
+        job_p = getjobjid(jobs, jid);
+
+        if(job_p == NULL){
+            printf("%s: No such job\n", argv[1]);
+            return;
+        }
+        pid  = job_p->pid;
+    }else{
+        pid = atoi(id);
+        if(pid <= 0){
+            printf("%s: argument must be a PID of %%jobid\n", argv[0]);
+            return;
+        }
+        job_p = getjobpid(jobs, pid);
+        if(job_p == NULL){
+            printf("%s: No such job\n",argv[1]);
+            return;
+        }
+    }
+
+    kill(pid, SIGCONT);
+
+    if(!strcmp(argv[0],"bg")){
+        job_p->state = BG;
+        printf("[%d] (%d) %s", jid, pid, job_p->cmdline);
+
+    }else{
+        job_p->state = FG;
+        waitfg(pid);
+    }
+
+
     return;
 }
 
@@ -278,6 +382,10 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
+
+    while(pid == fgpid(jobs)){
+        usleep(100);
+    }
     return;
 }
 
@@ -294,6 +402,41 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+
+    pid_t pid;
+    int status;
+    int old_errno = errno;  /* 保存调用前的错误代码 */
+    /*  1、正常退出状态
+        2、子进程暂停
+        3、子进程被信号终止*/
+    while((pid = waitpid(-1, &status, WNOHANG)) > 0){
+        if(WIFEXITED(status)){
+            deletejob(jobs,pid);
+        }else if(WIFSTOPPED(status)){
+            printf("Job [%d] (%d) stoppted by signal %d\n", pid2jid(pid), pid, 20);
+            getjobpid(jobs, pid)->state = ST;
+        }else if(WIFSIGNALED(status)){
+            printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, 2);
+            deletejob(jobs, pid);
+        }
+
+
+
+    }
+
+    if(pid != 0 && errno != ECHILD){
+        printf("waitpid %d error, errno is %d\n", pid, errno);
+    }
+
+/* 正常退出则WIFEXITED返回非零值 */
+/*
+    pid = waitpid(-1,&status,WNOHANG);
+    
+    if(WIFEXITED(status)){
+        deletejob(jobs,pid);
+    }
+*/
+    errno = old_errno;
     return;
 }
 
@@ -305,6 +448,14 @@ void sigchld_handler(int sig)
 void sigint_handler(int sig) 
 {
     
+    pid_t pid;
+    pid = fgpid(jobs);
+    printf("Job [%d] (%d) terminated by signal %d \n", pid2jid(pid), pid, sig);
+    /* 正常退出由sigchild回收更新joblist，发生int中断需专门更新 */
+    deletejob(jobs, pid);
+    kill(-pid, sig);
+    
+
     return;
 }
 
@@ -315,6 +466,16 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+
+    pid_t pid;
+
+    pid = fgpid(jobs);
+
+    printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, sig);
+    getjobpid(jobs, pid)->state = ST;
+    kill(-pid, sig);
+    
+
     return;
 }
 
@@ -397,7 +558,7 @@ int deletejob(struct job_t *jobs, pid_t pid)
     return 0;
 }
 
-/* fgpid - Return PID of current foreground job, 0 if no such job */
+/* fgpid - Return PID of current foreground job, 0 if no such job  返回前台工作的pid */
 pid_t fgpid(struct job_t *jobs) {
     int i;
 
